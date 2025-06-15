@@ -9,7 +9,13 @@ postgress-transaction-eg/
 ├── src/                               # TypeScript source code directory
 │   ├── index.ts                       # Main application entry point
 │   ├── types/                         # TypeScript interfaces and types
-│   │   └── index.ts                   # Comprehensive type definitions
+│   │   ├── index.ts                   # Re-exports all type definitions
+│   │   ├── enums.ts                   # Type unions and enums
+│   │   ├── entities.ts                # Database entity interfaces
+│   │   ├── api.ts                     # API request/response DTOs
+│   │   ├── repository.ts              # Repository method parameters
+│   │   ├── database.ts                # Database connection types
+│   │   └── errors.ts                  # Custom error classes
 │   ├── database/                      # Database connection setup
 │   │   └── connection.ts              # PostgreSQL connection pool with typing
 │   ├── repositories/                  # Data access layer
