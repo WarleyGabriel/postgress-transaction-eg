@@ -136,3 +136,5 @@ dist
 .pnp.*
 
 test_results/
+
+.DS_Store

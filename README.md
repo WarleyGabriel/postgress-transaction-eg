@@ -61,22 +61,24 @@ This project follows a **layered architecture pattern** with clear separation of
 - **Sample Data** (`dummy_data.sql`): Test data for development
 - **Indexes**: Optimized for banking operation queries
 
-## 🏛️ JavaScript Architecture Deep Dive
+## 🏛️ TypeScript Architecture Deep Dive
 
 ### **File Structure Explanation**
 
-#### **`src/index.js` - Application Entry Point**
+#### **`src/index.ts` - Application Entry Point**
 
 - Sets up Express server and middleware
 - Configures routes and error handling
 - Manages database connection pool
 - Handles graceful server shutdown
 
-#### **`src/database/connection.js` - Database Connection Pool**
+#### **`src/database/connection.ts` - Database Connection Pool**
 
-```javascript
-// Manages PostgreSQL connection pool
-const pool = new Pool({
+```typescript
+// Manages PostgreSQL connection pool with TypeScript types
+import { Pool, PoolConfig } from "pg";
+
+const poolConfig: PoolConfig = {
   user: "postgres",
   host: "localhost",
   database: "banking_system",
@@ -85,19 +87,27 @@ const pool = new Pool({
   max: 20, // Maximum connections in pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
-});
+};
+
+const pool = new Pool(poolConfig);
 ```
 
 #### **`src/repositories/` - Data Access Layer**
 
-- **`accountRepository.js`**: All account and transaction database operations
-- **`transactionRepository.js`**: Transaction queries and utilities
+- **`accountRepository.ts`**: All account and transaction database operations
+- **`transactionRepository.ts`**: Transaction queries and utilities
 - **Purpose**: Handle ALL database operations including complex transactions
-- **Pattern**: Repository pattern with transaction management
+- **Pattern**: Repository pattern with transaction management and strict typing
 
-```javascript
-// Example repository method - handles complete database transaction
-async processTransfer(fromAccountId, toAccountId, amount, description, referenceNumber) {
+```typescript
+// Example repository method - handles complete database transaction with TypeScript
+async processTransfer(
+  fromAccountId: number,
+  toAccountId: number,
+  amount: number,
+  description: string,
+  referenceNumber: string
+): Promise<Transaction> {
   const client = await this.pool.connect();
   try {
     await client.query("BEGIN");
@@ -108,7 +118,7 @@ async processTransfer(fromAccountId, toAccountId, amount, description, reference
 
     // Validate and calculate new balances
     if (fromBalance < amount) {
-      throw new Error("Insufficient funds");
+      throw new InsufficientFundsError("Insufficient funds");
     }
 
     // Update both accounts and create transaction records
@@ -127,23 +137,25 @@ async processTransfer(fromAccountId, toAccountId, amount, description, reference
 }
 ```
 
-#### **`src/services/accountService.js` - Business Logic Layer**
+#### **`src/services/accountService.ts` - Business Logic Layer**
 
-- **Business Logic**: Handles validation, transformation, and orchestration
+- **Business Logic**: Handles validation, transformation, and orchestration with type safety
 - **Input Validation**: Validates request parameters and business rules
-- **Data Transformation**: Formats data for API responses
+- **Data Transformation**: Formats data for API responses with proper typing
 - **Repository Orchestration**: Coordinates calls to multiple repositories
 
-```javascript
+```typescript
 // Example service method - ONLY business logic, NO database operations
-async transfer({ fromAccountId, toAccountId, amount, description }) {
-  // Business validation
+async transfer(transferData: TransferRequest): Promise<TransferResponse> {
+  const { fromAccountId, toAccountId, amount, description } = transferData;
+
+  // Business validation with TypeScript type checking
   if (fromAccountId === toAccountId) {
-    throw new Error("Cannot transfer to the same account");
+    throw new ValidationError("Cannot transfer to the same account");
   }
 
   if (!amount || amount <= 0) {
-    throw new Error("Amount must be greater than 0");
+    throw new ValidationError("Amount must be greater than 0");
   }
 
   // Generate reference number
@@ -154,44 +166,70 @@ async transfer({ fromAccountId, toAccountId, amount, description }) {
     fromAccountId, toAccountId, amount, description, referenceNumber
   );
 
-  // Transform and return response
+  // Transform and return response with proper typing
   return this._formatTransactionResponse(transaction);
 }
 ```
 
-#### **`src/controllers/accountController.js` - Request Handlers**
+#### **`src/controllers/accountController.ts` - Request Handlers**
 
-- **HTTP Request/Response**: Handles Express.js routing
-- **Input Validation**: Validates incoming request data
+- **HTTP Request/Response**: Handles Express.js routing with TypeScript types
+- **Input Validation**: Validates incoming request data with type safety
 - **Status Codes**: Returns appropriate HTTP status codes
 - **Error Formatting**: Formats errors for API responses
 
-```javascript
-// Example controller method
-async deposit(req, res) {
+```typescript
+// Example controller method with TypeScript
+async deposit(req: Request, res: Response): Promise<void> {
   try {
     const { accountId } = req.params;
     const { amount, description } = req.body;
 
-    const result = await accountService.deposit(accountId, amount, description);
-    res.status(200).json(result);
+    const accountIdNum = this.validateAndParseId(accountId, "Account ID");
+
+    if (!amount || amount <= 0) {
+      res.status(StatusCodes.BAD_REQUEST).json({
+        success: false,
+        error: "Valid amount is required",
+      });
+      return;
+    }
+
+    const result = await accountService.deposit(
+      accountIdNum,
+      parseFloat(amount),
+      description ?? "Deposit"
+    );
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      data: result,
+      message: "Deposit completed successfully",
+    });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    this.handleControllerError(error, res);
   }
 }
 ```
 
-#### **`src/routes/accountRoutes.js` - API Route Definitions**
+#### **`src/routes/accountRoutes.ts` - API Route Definitions**
 
-- **Route Mapping**: Maps HTTP methods to controller functions
+- **Route Mapping**: Maps HTTP methods to controller functions with TypeScript
 - **Middleware**: Applies validation and authentication middleware
 - **Path Parameters**: Defines URL parameters and structure
 
-```javascript
-// Example route definitions
-router.post("/accounts/:id/deposit", accountController.deposit);
-router.post("/accounts/:id/withdraw", accountController.withdraw);
-router.post("/accounts/:id/transfer", accountController.transfer);
+```typescript
+// Example route definitions with TypeScript
+import { Router } from "express";
+import accountController from "../controllers/accountController";
+
+const router = Router();
+
+router.post("/:id/deposit", accountController.deposit);
+router.post("/:id/withdraw", accountController.withdraw);
+router.post("/:id/transfer", accountController.transfer);
+
+export default router;
 ```
 
 ### **Key Design Patterns**
@@ -238,8 +276,8 @@ router.post("/accounts/:id/transfer", accountController.transfer);
 ### Prerequisites
 
 - **Docker** and **Docker Compose** installed
-- **Node.js** 16+ and npm installed
-- Basic knowledge of JavaScript, SQL, and REST APIs
+- **Node.js** 22+ and npm installed
+- Basic knowledge of TypeScript, SQL, and REST APIs
 
 ### 🐳 Docker Setup (Recommended)
 
@@ -300,16 +338,20 @@ This is the easiest way to get started with the complete banking system includin
    - Execute the script
 
 8. **Update database connection for the API:**
-   Edit `src/database/connection.js` to match Docker settings:
+   Edit `src/database/connection.ts` to match Docker settings:
 
-   ```javascript
-   const pool = new Pool({
+   ```typescript
+   import { Pool, PoolConfig } from "pg";
+
+   const poolConfig: PoolConfig = {
      user: "myuser",
      host: "localhost", // Use 'localhost' when running API outside Docker
      database: "banking_system",
      password: "mypassword",
      port: 5432,
-   });
+   };
+
+   const pool = new Pool(poolConfig);
    ```
 
 9. **Install Node.js dependencies:**
