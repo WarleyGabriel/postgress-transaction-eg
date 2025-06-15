@@ -1,16 +1,31 @@
-const AccountRepository = require("../repositories/accountRepository");
-const TransactionRepository = require("../repositories/transactionRepository");
+import { AccountRepository } from "../repositories/accountRepository";
+import { TransactionRepository } from "../repositories/transactionRepository";
+import {
+  AccountResponse,
+  TransactionResponse,
+  BalanceResponse,
+  MonthlyTransactionSummary,
+  CreateAccountRequest,
+  ValidationError,
+  AccountNotFoundError,
+  AccountType,
+  Currency,
+  Transaction,
+} from "../types";
 
-class AccountService {
+export class AccountService {
+  private readonly accountRepository: AccountRepository;
+  private readonly transactionRepository: TransactionRepository;
+
   constructor() {
     this.accountRepository = new AccountRepository();
     this.transactionRepository = new TransactionRepository();
   }
 
-  async getAccountsByUserId(userId) {
+  async getAccountsByUserId(userId: number): Promise<AccountResponse[]> {
     // Business logic validation
-    if (!userId || isNaN(userId)) {
-      throw new Error("Valid user ID is required");
+    if (!userId || isNaN(userId) || userId <= 0) {
+      throw new ValidationError("Valid user ID is required");
     }
 
     // Delegate to repository
@@ -28,17 +43,17 @@ class AccountService {
     }));
   }
 
-  async getAccountById(accountId) {
+  async getAccountById(accountId: number): Promise<AccountResponse> {
     // Business logic validation
-    if (!accountId || isNaN(accountId)) {
-      throw new Error("Valid account ID is required");
+    if (!accountId || isNaN(accountId) || accountId <= 0) {
+      throw new ValidationError("Valid account ID is required");
     }
 
     // Delegate to repository
     const account = await this.accountRepository.getAccountById(accountId);
 
     if (!account) {
-      throw new Error("Account not found");
+      throw new AccountNotFoundError(accountId);
     }
 
     // Business logic transformation
@@ -58,37 +73,36 @@ class AccountService {
     };
   }
 
-  async createAccount({
-    userId,
-    accountType,
-    initialBalance = 0,
-    currency = "USD",
-  }) {
+  async createAccount(request: CreateAccountRequest): Promise<AccountResponse> {
+    const {
+      userId,
+      accountType,
+      initialBalance = 0,
+      currency = "USD",
+    } = request;
+
     // Business logic validation
-    if (!userId || isNaN(userId)) {
-      throw new Error("Valid user ID is required");
+    if (!userId || isNaN(userId) || userId <= 0) {
+      throw new ValidationError("Valid user ID is required");
     }
 
-    if (
-      !accountType ||
-      !["checking", "savings", "business"].includes(accountType)
-    ) {
-      throw new Error(
+    if (!accountType || !this.isValidAccountType(accountType)) {
+      throw new ValidationError(
         "Valid account type is required (checking, savings, business)"
       );
     }
 
     if (initialBalance < 0) {
-      throw new Error("Initial balance cannot be negative");
+      throw new ValidationError("Initial balance cannot be negative");
     }
 
-    if (!currency || !["USD", "EUR", "GBP"].includes(currency)) {
-      throw new Error("Valid currency is required (USD, EUR, GBP)");
+    if (!currency || !this.isValidCurrency(currency)) {
+      throw new ValidationError("Valid currency is required (USD, EUR, GBP)");
     }
 
     // Generate reference number for initial transaction
     const referenceNumber =
-      await this.transactionRepository.generateReferenceNumber();
+      this.transactionRepository.generateReferenceNumber();
 
     // Delegate to repository (handles both account creation and initial transaction)
     const account =
@@ -119,23 +133,27 @@ class AccountService {
     };
   }
 
-  async deposit(accountId, amount, description = "Deposit") {
+  async deposit(
+    accountId: number,
+    amount: number,
+    description: string = "Deposit"
+  ): Promise<TransactionResponse> {
     // Business logic validation
-    if (!accountId || isNaN(accountId)) {
-      throw new Error("Valid account ID is required");
+    if (!accountId || isNaN(accountId) || accountId <= 0) {
+      throw new ValidationError("Valid account ID is required");
     }
 
-    if (!amount || amount <= 0) {
-      throw new Error("Amount must be greater than 0");
+    if (!amount || amount <= 0 || isNaN(amount)) {
+      throw new ValidationError("Amount must be greater than 0");
     }
 
     if (typeof description !== "string" || description.trim().length === 0) {
-      throw new Error("Description is required");
+      throw new ValidationError("Description is required");
     }
 
     // Generate reference number
     const referenceNumber =
-      await this.transactionRepository.generateReferenceNumber();
+      this.transactionRepository.generateReferenceNumber();
 
     // Delegate to repository (handles entire transaction process)
     const transaction = await this.accountRepository.processDeposit(
@@ -146,26 +164,30 @@ class AccountService {
     );
 
     // Business logic transformation
-    return this._formatTransactionResponse(transaction);
+    return this.formatTransactionResponse(transaction);
   }
 
-  async withdraw(accountId, amount, description = "Withdrawal") {
+  async withdraw(
+    accountId: number,
+    amount: number,
+    description: string = "Withdrawal"
+  ): Promise<TransactionResponse> {
     // Business logic validation
-    if (!accountId || isNaN(accountId)) {
-      throw new Error("Valid account ID is required");
+    if (!accountId || isNaN(accountId) || accountId <= 0) {
+      throw new ValidationError("Valid account ID is required");
     }
 
-    if (!amount || amount <= 0) {
-      throw new Error("Amount must be greater than 0");
+    if (!amount || amount <= 0 || isNaN(amount)) {
+      throw new ValidationError("Amount must be greater than 0");
     }
 
     if (typeof description !== "string" || description.trim().length === 0) {
-      throw new Error("Description is required");
+      throw new ValidationError("Description is required");
     }
 
     // Generate reference number
     const referenceNumber =
-      await this.transactionRepository.generateReferenceNumber();
+      this.transactionRepository.generateReferenceNumber();
 
     // Delegate to repository (handles entire transaction process including balance validation)
     const transaction = await this.accountRepository.processWithdrawal(
@@ -176,39 +198,39 @@ class AccountService {
     );
 
     // Business logic transformation
-    return this._formatTransactionResponse(transaction);
+    return this.formatTransactionResponse(transaction);
   }
 
-  async transfer({
-    fromAccountId,
-    toAccountId,
-    amount,
-    description = "Transfer",
-  }) {
+  async transfer(
+    fromAccountId: number,
+    toAccountId: number,
+    amount: number,
+    description: string = "Transfer"
+  ): Promise<TransactionResponse> {
     // Business logic validation
-    if (!fromAccountId || isNaN(fromAccountId)) {
-      throw new Error("Valid source account ID is required");
+    if (!fromAccountId || isNaN(fromAccountId) || fromAccountId <= 0) {
+      throw new ValidationError("Valid source account ID is required");
     }
 
-    if (!toAccountId || isNaN(toAccountId)) {
-      throw new Error("Valid destination account ID is required");
+    if (!toAccountId || isNaN(toAccountId) || toAccountId <= 0) {
+      throw new ValidationError("Valid destination account ID is required");
     }
 
     if (fromAccountId === toAccountId) {
-      throw new Error("Cannot transfer to the same account");
+      throw new ValidationError("Cannot transfer to the same account");
     }
 
-    if (!amount || amount <= 0) {
-      throw new Error("Amount must be greater than 0");
+    if (!amount || amount <= 0 || isNaN(amount)) {
+      throw new ValidationError("Amount must be greater than 0");
     }
 
     if (typeof description !== "string" || description.trim().length === 0) {
-      throw new Error("Description is required");
+      throw new ValidationError("Description is required");
     }
 
     // Generate reference number
     const referenceNumber =
-      await this.transactionRepository.generateReferenceNumber();
+      this.transactionRepository.generateReferenceNumber();
 
     // Delegate to repository (handles entire transfer process)
     const transaction = await this.accountRepository.processTransfer(
@@ -220,17 +242,25 @@ class AccountService {
     );
 
     // Business logic transformation
-    return this._formatTransactionResponse(transaction);
+    return this.formatTransactionResponse(transaction);
   }
 
-  async getTransactionHistory(accountId, limit = 50, offset = 0) {
+  async getTransactionHistory(
+    accountId: number,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<TransactionResponse[]> {
     // Business logic validation
-    if (!accountId || isNaN(accountId)) {
-      throw new Error("Valid account ID is required");
+    if (!accountId || isNaN(accountId) || accountId <= 0) {
+      throw new ValidationError("Valid account ID is required");
     }
 
-    if (limit > 100) {
-      throw new Error("Limit cannot exceed 100 transactions");
+    if (limit > 100 || limit <= 0) {
+      throw new ValidationError("Limit must be between 1 and 100 transactions");
+    }
+
+    if (offset < 0) {
+      throw new ValidationError("Offset must be non-negative");
     }
 
     // Delegate to repository
@@ -243,21 +273,21 @@ class AccountService {
 
     // Business logic transformation
     return transactions.map((transaction) =>
-      this._formatTransactionResponse(transaction)
+      this.formatTransactionResponse(transaction)
     );
   }
 
-  async getAccountBalance(accountId) {
+  async getAccountBalance(accountId: number): Promise<BalanceResponse> {
     // Business logic validation
-    if (!accountId || isNaN(accountId)) {
-      throw new Error("Valid account ID is required");
+    if (!accountId || isNaN(accountId) || accountId <= 0) {
+      throw new ValidationError("Valid account ID is required");
     }
 
     // Delegate to repository
     const account = await this.accountRepository.getAccountById(accountId);
 
     if (!account) {
-      throw new Error("Account not found");
+      throw new AccountNotFoundError(accountId);
     }
 
     // Business logic transformation
@@ -270,18 +300,23 @@ class AccountService {
     };
   }
 
-  async getMonthlyTransactionSummary(accountId, year, month) {
+  async getMonthlyTransactionSummary(
+    accountId: number,
+    year: number,
+    month: number
+  ): Promise<MonthlyTransactionSummary[]> {
     // Business logic validation
-    if (!accountId || isNaN(accountId)) {
-      throw new Error("Valid account ID is required");
+    if (!accountId || isNaN(accountId) || accountId <= 0) {
+      throw new ValidationError("Valid account ID is required");
     }
 
-    if (!year || year < 2000 || year > new Date().getFullYear()) {
-      throw new Error("Valid year is required");
+    const currentYear = new Date().getFullYear();
+    if (!year || year < 2000 || year > currentYear) {
+      throw new ValidationError(`Valid year is required (2000-${currentYear})`);
     }
 
     if (!month || month < 1 || month > 12) {
-      throw new Error("Valid month is required (1-12)");
+      throw new ValidationError("Valid month is required (1-12)");
     }
 
     // Delegate to repository
@@ -295,14 +330,16 @@ class AccountService {
     // Business logic transformation
     return summary.map((item) => ({
       transactionType: item.transaction_type,
-      count: parseInt(item.transaction_count),
+      count: parseInt(item.transaction_count, 10),
       totalAmount: parseFloat(item.total_amount),
       averageAmount: parseFloat(item.average_amount),
     }));
   }
 
-  // Private helper method for consistent transaction response formatting
-  _formatTransactionResponse(transaction) {
+  // Private helper methods
+  private formatTransactionResponse(
+    transaction: Transaction
+  ): TransactionResponse {
     return {
       transactionId: transaction.id,
       referenceNumber: transaction.reference_number,
@@ -312,10 +349,21 @@ class AccountService {
       balanceAfter: parseFloat(transaction.balance_after),
       description: transaction.description,
       createdAt: transaction.created_at,
-      relatedAccountId: transaction.related_account_id,
-      status: transaction.status || "completed",
+      ...(transaction.related_account_id !== undefined && {
+        relatedAccountId: transaction.related_account_id,
+      }),
+      status: transaction.status,
     };
+  }
+
+  private isValidAccountType(accountType: string): accountType is AccountType {
+    return ["checking", "savings", "business"].includes(accountType);
+  }
+
+  private isValidCurrency(currency: string): currency is Currency {
+    return ["USD", "EUR", "GBP"].includes(currency);
   }
 }
 
-module.exports = new AccountService();
+// Export singleton instance
+export default new AccountService();

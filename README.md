@@ -1,29 +1,34 @@
-# Banking System API
+# TypeScript Banking System API
 
-A complete banking system built with Node.js, Express, and PostgreSQL. This project includes both a robust database schema and a RESTful API for managing users, accounts, and financial transactions with proper error handling, concurrent transaction safety, and comprehensive testing.
+A complete banking system built with **TypeScript**, Node.js, Express, and PostgreSQL. This project features strict type safety, comprehensive interfaces, and a RESTful API for managing users, accounts, and financial transactions with proper error handling, concurrent transaction safety, and enterprise-grade architecture.
 
 ## 🏗️ Project Structure
 
 ```
 postgress-transaction-eg/
-├── src/                               # Source code directory
-│   ├── index.js                       # Main application entry point
+├── src/                               # TypeScript source code directory
+│   ├── index.ts                       # Main application entry point
+│   ├── types/                         # TypeScript interfaces and types
+│   │   └── index.ts                   # Comprehensive type definitions
 │   ├── database/                      # Database connection setup
-│   │   └── connection.js              # PostgreSQL connection pool
+│   │   └── connection.ts              # PostgreSQL connection pool with typing
 │   ├── repositories/                  # Data access layer
-│   │   ├── accountRepository.js       # Account database operations
-│   │   └── transactionRepository.js   # Transaction database operations
+│   │   ├── accountRepository.ts       # Account database operations
+│   │   └── transactionRepository.ts   # Transaction database operations
 │   ├── services/                      # Business logic layer
-│   │   └── accountService.js          # Account and transaction business logic
+│   │   └── accountService.ts          # Account and transaction business logic
 │   ├── controllers/                   # Request handling layer
-│   │   └── accountController.js       # API endpoint controllers
+│   │   └── accountController.ts       # API endpoint controllers
 │   └── routes/                        # API routing
-│       └── accountRoutes.js           # Account-related API routes
+│       └── accountRoutes.ts           # Account-related API routes
+├── dist/                              # Compiled JavaScript output (generated)
 ├── database_schema.sql                # Database schema with tables, functions, and triggers
 ├── dummy_data.sql                     # Sample data for testing and development
 ├── docker-compose.yaml                # Docker setup for PostgreSQL
 ├── test_concurrent_withdrawals.sh     # Concurrent transaction testing script
-├── package.json                       # Node.js dependencies and scripts
+├── tsconfig.json                      # TypeScript configuration
+├── eslint.config.js                   # ESLint v9 configuration for TypeScript
+├── package.json                       # Node.js dependencies and TypeScript scripts
 ├── package-lock.json                  # Locked dependency versions
 └── README.md                          # This documentation file
 ```
@@ -207,6 +212,8 @@ router.post("/accounts/:id/transfer", accountController.transfer);
 
 ## 📋 Features
 
+### **Banking Operations**
+
 - **User Management**: Store customer information with personal details
 - **Multi-Account Support**: Users can have multiple accounts (checking, savings, business)
 - **Transaction Tracking**: Complete audit trail of all financial operations
@@ -215,6 +222,16 @@ router.post("/accounts/:id/transfer", accountController.transfer);
 - **Account Status Management**: Active, suspended, and closed account states
 - **Automatic Timestamps**: Auto-updating created_at and updated_at fields
 - **Unique Account Numbers**: Automatic generation of unique account numbers
+
+### **TypeScript Features**
+
+- **🔒 Strict Type Safety**: Full type coverage with `strictNullChecks` and `exactOptionalPropertyTypes`
+- **📝 Comprehensive Interfaces**: Detailed type definitions for all entities and DTOs
+- **🛡️ Custom Error Classes**: Typed error handling with specific banking errors
+- **🔍 Type Guards**: Runtime type validation with compile-time guarantees
+- **📊 Generic Types**: Reusable type-safe components and API responses
+- **⚡ Auto-completion**: Full IntelliSense support for better developer experience
+- **🧪 Type-Driven Development**: Interfaces-first approach ensuring consistency
 
 ## 🚀 Getting Started
 
@@ -301,15 +318,30 @@ This is the easiest way to get started with the complete banking system includin
    npm install
    ```
 
-10. **Start the API server:**
+10. **Install TypeScript dependencies:**
 
     ```bash
-    npm start
-    # Or for development with auto-reload:
-    npm run dev
+    npm install
     ```
 
-11. **Test the API:**
+11. **Start the TypeScript API server:**
+
+    ```bash
+    # Development with hot reload
+    npm run dev
+
+    # Build and start production
+    npm run build
+    npm start
+
+    # Type checking only
+    npm run type-check
+
+    # Linting
+    npm run lint
+    ```
+
+12. **Test the API:**
     ```bash
     curl http://localhost:3000/api/accounts
     ```

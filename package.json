@@ -1,28 +1,45 @@
 {
   "name": "banking-api",
   "version": "1.0.0",
-  "description": "A banking system API with PostgreSQL",
-  "main": "src/index.js",
+  "description": "A TypeScript banking system API with PostgreSQL",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:watch": "nodemon --exec ts-node src/index.ts",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "postbuild": "cp package.json dist/",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src/**/*.ts"
   },
   "keywords": [
     "banking",
     "api",
     "postgresql",
     "express",
-    "nodejs"
+    "nodejs",
+    "typescript"
   ],
-  "author": "Your Name",
+  "author": "Warley Gabriel",
   "license": "MIT",
-  "type": "commonjs",
   "dependencies": {
     "express": "^4.18.2",
     "http-status-codes": "^2.3.0",
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "@eslint/js": "^9.29.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.1",
+    "@types/pg": "^8.15.4",
+    "@typescript-eslint/eslint-plugin": "^8.34.0",
+    "@typescript-eslint/parser": "^8.34.0",
+    "eslint": "^9.29.0",
+    "nodemon": "^3.1.10",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.3"
   }
 }

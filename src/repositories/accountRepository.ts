@@ -1,14 +1,27 @@
-const pool = require("../database/connection");
+import { Pool, PoolClient, QueryResult } from "pg";
+import pool from "../database/connection";
+import {
+  Account,
+  AccountWithUser,
+  CreateAccountParams,
+  CreateAccountWithDepositParams,
+  AccountNotFoundError,
+  InsufficientFundsError,
+  Transaction,
+} from "../types";
 
-class AccountRepository {
+export class AccountRepository {
+  private readonly pool: Pool;
+
   constructor() {
     this.pool = pool;
   }
 
-  async getAccountsByUserId(userId) {
+  async getAccountsByUserId(userId: number): Promise<Account[]> {
     const query = `
       SELECT
         a.id,
+        a.user_id,
         a.account_number,
         a.account_type,
         a.balance,
@@ -21,11 +34,11 @@ class AccountRepository {
       ORDER BY a.created_at DESC
     `;
 
-    const result = await this.pool.query(query, [userId]);
+    const result: QueryResult<Account> = await this.pool.query(query, [userId]);
     return result.rows;
   }
 
-  async getAccountById(accountId) {
+  async getAccountById(accountId: number): Promise<AccountWithUser | null> {
     const query = `
       SELECT
         a.*,
@@ -37,33 +50,47 @@ class AccountRepository {
       WHERE a.id = $1
     `;
 
-    const result = await this.pool.query(query, [accountId]);
-    return result.rows[0];
+    const result: QueryResult<AccountWithUser> = await this.pool.query(query, [
+      accountId,
+    ]);
+    return result.rows[0] ?? null;
   }
 
-  async createAccount({ userId, account_type, initial_balance, currency }) {
+  async createAccount(params: CreateAccountParams): Promise<Account> {
+    const { userId, account_type, initial_balance, currency } = params;
+
     const query = `
       INSERT INTO accounts (user_id, account_number, account_type, balance, currency)
       VALUES ($1, generate_account_number(), $2, $3, $4)
       RETURNING *
     `;
 
-    const result = await this.pool.query(query, [
+    const result: QueryResult<Account> = await this.pool.query(query, [
       userId,
       account_type,
-      initial_balance,
+      initial_balance.toString(),
       currency,
     ]);
-    return result.rows[0];
+
+    return result.rows[0]!;
   }
 
-  async getAccountBalance(accountId, client = this.pool) {
+  async getAccountBalance(
+    accountId: number,
+    client: PoolClient | Pool = this.pool
+  ): Promise<string | null> {
     const query = "SELECT balance FROM accounts WHERE id = $1 FOR UPDATE";
-    const result = await client.query(query, [accountId]);
-    return result.rows[0]?.balance;
+    const result: QueryResult<{ balance: string }> = await client.query(query, [
+      accountId,
+    ]);
+    return result.rows[0]?.balance ?? null;
   }
 
-  async updateBalance(accountId, newBalance, client = this.pool) {
+  async updateBalance(
+    accountId: number,
+    newBalance: number,
+    client: PoolClient | Pool = this.pool
+  ): Promise<Account> {
     const query = `
       UPDATE accounts
       SET balance = $2, updated_at = CURRENT_TIMESTAMP
@@ -71,30 +98,40 @@ class AccountRepository {
       RETURNING *
     `;
 
-    const result = await client.query(query, [accountId, newBalance]);
-    return result.rows[0];
+    const result: QueryResult<Account> = await client.query(query, [
+      accountId,
+      newBalance.toString(),
+    ]);
+
+    if (result.rows.length === 0) {
+      throw new AccountNotFoundError(accountId);
+    }
+
+    return result.rows[0]!;
   }
 
-  // Repository method to handle deposit transaction (including DB transaction)
-  async processDeposit(accountId, amount, description, referenceNumber) {
+  async processDeposit(
+    accountId: number,
+    amount: number,
+    description: string,
+    referenceNumber: string
+  ): Promise<Transaction> {
     const client = await this.pool.connect();
 
     try {
       await client.query("BEGIN");
 
-      // Get current balance with row lock
       const currentBalance = await this.getAccountBalance(accountId, client);
 
-      if (currentBalance === undefined) {
-        throw new Error("Account not found");
+      if (currentBalance === null) {
+        throw new AccountNotFoundError(accountId);
       }
 
-      const newBalance = parseFloat(currentBalance) + parseFloat(amount);
+      const balanceBefore = parseFloat(currentBalance);
+      const newBalance = balanceBefore + amount;
 
-      // Update account balance
       await this.updateBalance(accountId, newBalance, client);
 
-      // Create transaction record
       const transactionQuery = `
         INSERT INTO transactions (
           account_id, transaction_type, amount, balance_before,
@@ -104,18 +141,21 @@ class AccountRepository {
         RETURNING *
       `;
 
-      const transactionResult = await client.query(transactionQuery, [
-        accountId,
-        "deposit",
-        parseFloat(amount),
-        parseFloat(currentBalance),
-        newBalance,
-        description,
-        referenceNumber,
-      ]);
+      const transactionResult: QueryResult<Transaction> = await client.query(
+        transactionQuery,
+        [
+          accountId,
+          "deposit",
+          amount.toString(),
+          balanceBefore.toString(),
+          newBalance.toString(),
+          description,
+          referenceNumber,
+        ]
+      );
 
       await client.query("COMMIT");
-      return transactionResult.rows[0];
+      return transactionResult.rows[0]!;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -124,30 +164,33 @@ class AccountRepository {
     }
   }
 
-  // Repository method to handle withdrawal transaction (including DB transaction)
-  async processWithdrawal(accountId, amount, description, referenceNumber) {
+  async processWithdrawal(
+    accountId: number,
+    amount: number,
+    description: string,
+    referenceNumber: string
+  ): Promise<Transaction> {
     const client = await this.pool.connect();
 
     try {
       await client.query("BEGIN");
 
-      // Get current balance with row lock
       const currentBalance = await this.getAccountBalance(accountId, client);
 
-      if (currentBalance === undefined) {
-        throw new Error("Account not found");
+      if (currentBalance === null) {
+        throw new AccountNotFoundError(accountId);
       }
 
-      if (parseFloat(currentBalance) < parseFloat(amount)) {
-        throw new Error("Insufficient funds");
+      const balanceBefore = parseFloat(currentBalance);
+
+      if (balanceBefore < amount) {
+        throw new InsufficientFundsError();
       }
 
-      const newBalance = parseFloat(currentBalance) - parseFloat(amount);
+      const newBalance = balanceBefore - amount;
 
-      // Update account balance
       await this.updateBalance(accountId, newBalance, client);
 
-      // Create transaction record
       const transactionQuery = `
         INSERT INTO transactions (
           account_id, transaction_type, amount, balance_before,
@@ -157,18 +200,21 @@ class AccountRepository {
         RETURNING *
       `;
 
-      const transactionResult = await client.query(transactionQuery, [
-        accountId,
-        "withdrawal",
-        parseFloat(amount),
-        parseFloat(currentBalance),
-        newBalance,
-        description,
-        referenceNumber,
-      ]);
+      const transactionResult: QueryResult<Transaction> = await client.query(
+        transactionQuery,
+        [
+          accountId,
+          "withdrawal",
+          amount.toString(),
+          balanceBefore.toString(),
+          newBalance.toString(),
+          description,
+          referenceNumber,
+        ]
+      );
 
       await client.query("COMMIT");
-      return transactionResult.rows[0];
+      return transactionResult.rows[0]!;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -177,43 +223,42 @@ class AccountRepository {
     }
   }
 
-  // Repository method to handle transfer between accounts (including DB transaction)
   async processTransfer(
-    fromAccountId,
-    toAccountId,
-    amount,
-    description,
-    referenceNumber
-  ) {
+    fromAccountId: number,
+    toAccountId: number,
+    amount: number,
+    description: string,
+    referenceNumber: string
+  ): Promise<Transaction> {
     const client = await this.pool.connect();
 
     try {
       await client.query("BEGIN");
 
-      // Get current balances with row locks (lock both accounts)
       const fromBalance = await this.getAccountBalance(fromAccountId, client);
       const toBalance = await this.getAccountBalance(toAccountId, client);
 
-      if (fromBalance === undefined) {
-        throw new Error("Source account not found");
+      if (fromBalance === null) {
+        throw new AccountNotFoundError(fromAccountId);
       }
 
-      if (toBalance === undefined) {
-        throw new Error("Destination account not found");
+      if (toBalance === null) {
+        throw new AccountNotFoundError(toAccountId);
       }
 
-      if (parseFloat(fromBalance) < parseFloat(amount)) {
-        throw new Error("Insufficient funds");
+      const fromBalanceNum = parseFloat(fromBalance);
+      const toBalanceNum = parseFloat(toBalance);
+
+      if (fromBalanceNum < amount) {
+        throw new InsufficientFundsError();
       }
 
-      const newFromBalance = parseFloat(fromBalance) - parseFloat(amount);
-      const newToBalance = parseFloat(toBalance) + parseFloat(amount);
+      const newFromBalance = fromBalanceNum - amount;
+      const newToBalance = toBalanceNum + amount;
 
-      // Update both account balances
       await this.updateBalance(fromAccountId, newFromBalance, client);
       await this.updateBalance(toAccountId, newToBalance, client);
 
-      // Create outgoing transaction record
       const outgoingTransactionQuery = `
         INSERT INTO transactions (
           account_id, transaction_type, amount, balance_before,
@@ -223,18 +268,20 @@ class AccountRepository {
         RETURNING *
       `;
 
-      const outgoingTransaction = await client.query(outgoingTransactionQuery, [
-        fromAccountId,
-        "transfer_out",
-        parseFloat(amount),
-        parseFloat(fromBalance),
-        newFromBalance,
-        description,
-        referenceNumber,
-        toAccountId,
-      ]);
+      const outgoingTransaction: QueryResult<Transaction> = await client.query(
+        outgoingTransactionQuery,
+        [
+          fromAccountId,
+          "transfer_out",
+          amount.toString(),
+          fromBalanceNum.toString(),
+          newFromBalance.toString(),
+          description,
+          referenceNumber,
+          toAccountId,
+        ]
+      );
 
-      // Create incoming transaction record
       const incomingTransactionQuery = `
         INSERT INTO transactions (
           account_id, transaction_type, amount, balance_before,
@@ -247,16 +294,16 @@ class AccountRepository {
       await client.query(incomingTransactionQuery, [
         toAccountId,
         "transfer_in",
-        parseFloat(amount),
-        parseFloat(toBalance),
-        newToBalance,
+        amount.toString(),
+        toBalanceNum.toString(),
+        newToBalance.toString(),
         `Transfer from account ${fromAccountId}`,
         `${referenceNumber}-${fromAccountId}`,
         fromAccountId,
       ]);
 
       await client.query("COMMIT");
-      return outgoingTransaction.rows[0];
+      return outgoingTransaction.rows[0]!;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -265,36 +312,29 @@ class AccountRepository {
     }
   }
 
-  // Repository method to create account with initial deposit transaction
-  async createAccountWithInitialDeposit({
-    userId,
-    account_type,
-    initial_balance,
-    currency,
-    referenceNumber,
-  }) {
+  async createAccountWithInitialDeposit(
+    params: CreateAccountWithDepositParams
+  ): Promise<Account> {
+    const { userId, account_type, initial_balance, currency, referenceNumber } =
+      params;
     const client = await this.pool.connect();
 
     try {
       await client.query("BEGIN");
 
-      // Create account
       const accountQuery = `
         INSERT INTO accounts (user_id, account_number, account_type, balance, currency)
         VALUES ($1, generate_account_number(), $2, $3, $4)
         RETURNING *
       `;
 
-      const accountResult = await client.query(accountQuery, [
-        userId,
-        account_type,
-        initial_balance,
-        currency,
-      ]);
+      const accountResult: QueryResult<Account> = await client.query(
+        accountQuery,
+        [userId, account_type, initial_balance.toString(), currency]
+      );
 
-      const account = accountResult.rows[0];
+      const account = accountResult.rows[0]!;
 
-      // Create initial transaction if there's a balance
       if (initial_balance > 0) {
         const transactionQuery = `
           INSERT INTO transactions (
@@ -308,9 +348,9 @@ class AccountRepository {
         await client.query(transactionQuery, [
           account.id,
           "deposit",
-          parseFloat(initial_balance),
-          0,
-          parseFloat(initial_balance),
+          initial_balance.toString(),
+          "0",
+          initial_balance.toString(),
           "Initial deposit",
           referenceNumber,
         ]);
@@ -326,5 +366,3 @@ class AccountRepository {
     }
   }
 }
-
-module.exports = AccountRepository;

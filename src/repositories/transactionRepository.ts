@@ -1,11 +1,23 @@
-const pool = require("../database/connection");
+import { Pool, PoolClient, QueryResult } from "pg";
+import pool from "../database/connection";
+import {
+  Transaction,
+  TransactionWithRelatedAccount,
+  CreateTransactionParams,
+  TransactionType,
+} from "../types";
 
-class TransactionRepository {
+export class TransactionRepository {
+  private readonly pool: Pool;
+
   constructor() {
     this.pool = pool;
   }
 
-  async createTransaction(transactionData, client = this.pool) {
+  async createTransaction(
+    transactionData: CreateTransactionParams,
+    client: PoolClient | Pool = this.pool
+  ): Promise<Transaction> {
     const {
       account_id,
       transaction_type,
@@ -26,27 +38,31 @@ class TransactionRepository {
       RETURNING *
     `;
 
-    const result = await client.query(query, [
+    const result: QueryResult<Transaction> = await client.query(query, [
       account_id,
       transaction_type,
-      amount,
-      balance_before,
-      balance_after,
+      amount.toString(),
+      balance_before.toString(),
+      balance_after.toString(),
       description,
       reference_number,
       related_account_id,
     ]);
 
-    return result.rows[0];
+    return result.rows[0]!;
   }
 
-  async generateReferenceNumber() {
+  generateReferenceNumber(): string {
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000);
     return `TXN${timestamp}${random}`;
   }
 
-  async getTransactionsByAccountId(accountId, limit = 50, offset = 0) {
+  async getTransactionsByAccountId(
+    accountId: number,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<TransactionWithRelatedAccount[]> {
     const query = `
       SELECT
         t.*,
@@ -61,11 +77,14 @@ class TransactionRepository {
       LIMIT $2 OFFSET $3
     `;
 
-    const result = await this.pool.query(query, [accountId, limit, offset]);
+    const result: QueryResult<TransactionWithRelatedAccount> =
+      await this.pool.query(query, [accountId, limit, offset]);
     return result.rows;
   }
 
-  async getTransactionById(transactionId) {
+  async getTransactionById(
+    transactionId: number
+  ): Promise<TransactionWithRelatedAccount | null> {
     const query = `
       SELECT
         t.*,
@@ -80,11 +99,16 @@ class TransactionRepository {
       WHERE t.id = $1
     `;
 
-    const result = await this.pool.query(query, [transactionId]);
-    return result.rows[0];
+    const result: QueryResult<TransactionWithRelatedAccount> =
+      await this.pool.query(query, [transactionId]);
+    return result.rows[0] ?? null;
   }
 
-  async getTransactionsByDateRange(accountId, startDate, endDate) {
+  async getTransactionsByDateRange(
+    accountId: number,
+    startDate: Date,
+    endDate: Date
+  ): Promise<Transaction[]> {
     const query = `
       SELECT *
       FROM transactions
@@ -94,7 +118,7 @@ class TransactionRepository {
       ORDER BY created_at DESC
     `;
 
-    const result = await this.pool.query(query, [
+    const result: QueryResult<Transaction> = await this.pool.query(query, [
       accountId,
       startDate,
       endDate,
@@ -102,7 +126,10 @@ class TransactionRepository {
     return result.rows;
   }
 
-  async getTransactionsByType(accountId, transactionType) {
+  async getTransactionsByType(
+    accountId: number,
+    transactionType: TransactionType
+  ): Promise<Transaction[]> {
     const query = `
       SELECT *
       FROM transactions
@@ -111,11 +138,25 @@ class TransactionRepository {
       ORDER BY created_at DESC
     `;
 
-    const result = await this.pool.query(query, [accountId, transactionType]);
+    const result: QueryResult<Transaction> = await this.pool.query(query, [
+      accountId,
+      transactionType,
+    ]);
     return result.rows;
   }
 
-  async getMonthlyTransactionSummary(accountId, year, month) {
+  async getMonthlyTransactionSummary(
+    accountId: number,
+    year: number,
+    month: number
+  ): Promise<
+    Array<{
+      transaction_type: TransactionType;
+      transaction_count: string;
+      total_amount: string;
+      average_amount: string;
+    }>
+  > {
     const query = `
       SELECT
         transaction_type,
@@ -134,5 +175,3 @@ class TransactionRepository {
     return result.rows;
   }
 }
-
-module.exports = TransactionRepository;
