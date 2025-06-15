@@ -358,15 +358,10 @@ This is the easiest way to get started with the complete banking system includin
 
    ```bash
    npm install
+
    ```
 
-10. **Install TypeScript dependencies:**
-
-    ```bash
-    npm install
-    ```
-
-11. **Start the TypeScript API server:**
+10. **Start the TypeScript API server:**
 
     ```bash
     # Development with hot reload
@@ -383,7 +378,7 @@ This is the easiest way to get started with the complete banking system includin
     npm run lint
     ```
 
-12. **Test the API:**
+11. **Test the API:**
     ```bash
     curl http://localhost:3000/api/accounts
     ```
