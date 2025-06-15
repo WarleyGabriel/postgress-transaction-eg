@@ -1,6 +1,6 @@
 # TypeScript Banking System API
 
-A complete banking system built with **TypeScript**, Node.js, Express, and PostgreSQL. This project features strict type safety, comprehensive interfaces, and a RESTful API for managing users, accounts, and financial transactions with proper error handling, concurrent transaction safety, and enterprise-grade architecture.
+A banking system built with **TypeScript**, Node.js, Express, and PostgreSQL. This project features strict type safety, comprehensive interfaces, and a RESTful API for managing users, accounts, and financial transactions with proper error handling, concurrent transaction safety, and enterprise-grade architecture.
 
 ## 🏗️ Project Structure
 
